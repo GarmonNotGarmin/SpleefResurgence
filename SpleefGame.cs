@@ -19,9 +19,9 @@ namespace SpleefResurgence
 
         public readonly static ushort[] OneBreakTiles = { 0, 1, 6, 7, 8, 9, 22, 39, 40, 45, 46, 47, 56, 57, 59, 118, 119, 120, 121, 140, 145, 146, 147, 148, 150, 151, 152, 153, 154, 155, 156, 160, 163,
             164, 166, 167, 168, 169, 175, 176, 177, 189, 196, 197, 200, 204, 206, 230, 262, 263, 264, 265, 266, 267, 268, 273, 274, 284, 325, 326, 327, 346, 347, 348, 367, 368, 371, 396, 397,
-            398, 399, 400, 401, 402, 403, 407, 408, 409, 415, 416, 417, 418, 472, 473, 478, 507, 508, 563, 659, 666, 667, 669, 670, 671, 672, 673, 674, 675, 676, 687, 688, 689, 690, 691 };
+            398, 399, 400, 401, 402, 403, 407, 408, 409, 415, 416, 417, 418, 472, 473, 478, 507, 508, 563, 659, 666, 667, 669, 670, 671, 672, 673, 674, 675, 676, 687, 688, 689, 690, 691, 708, 717, 718, 719 };
 
-        public readonly int[] OneBreakTilesPlatforms = { 30, 38, 54, 157, 158, 159, 161, 188, 190, 191, 193, 195, 202, 311, 321, 322, 350, 357, 369, 370, 474, 479, 498, 500, 501, 502, 503, 562, 635 };
+        public readonly int[] OneBreakTilesPlatforms = { 30, 38, 54, 157, 158, 159, 161, 188, 190, 191, 193, 195, 202, 311, 321, 322, 350, 357, 369, 370, 474, 479, 498, 500, 501, 502, 503, 562, 635, 722 };
 
         public readonly int[] TwoBreakTiles = { 25, 107, 117, 203, 221 };
 
@@ -139,6 +139,39 @@ namespace SpleefResurgence
 
             new("scutlix", "[i:2771] [c/0000FF:Scutlix round] [i:2771]",
                 () => { GiveEveryoneMiscEquips(2771, 3); }),
+
+            new("lavaboulder", "[i:5520] [c/FF0000:Lava boulder round] [i:5520]",
+                () => { Boulders("Lava boulder", 5520); }),
+
+            new("spiderboulder", "[i:5521] [c/FFFFFF:Spider boulder round] [i:5521]",
+                () => { Boulders("Spider boulder", 5521, 20, 2); }),
+
+            new("pooboulder", "[i:5516] [c/A52A2A:Poo boulder round] [i:5516]",
+                () => { Boulders("Poo boulder", 5516, 20, 5); }),
+
+            new("ramrune", "[i:5465] [c/2596BE:Ram rune round] [i:5465]",
+                () => { GiveEveryoneArmor(5465); }),
+
+            new("digtoise", "[i:5667] [c/EC5800:Digtoise round] [i:5667]",
+                () => { GiveEveryoneItems(5667, 1); }),
+
+            new("mouse", "[i:5525] [c/FFFFFF:Cursed Piper Flute round] [i:5525]",
+                () => { GiveEveryoneMiscEquips(5525, 3); }),
+
+            new("dino", "[i:5510] [c/FFA500:Slasher's Mysterious Skull round] [i:5510]",
+                () => { GiveEveryoneMiscEquips(5510, 3); }),
+
+            new("powerbomb", "[i:5594] [c/FFA500:Power Bomb round] [i:5594]",
+                () => { GiveEveryoneItems(5594, 1); }),
+
+            new("stickypowerbomb", "[i:5595] [c/FFA500:Sticky Power Bomb round] [i:5595]",
+                () => { GiveEveryoneItems(5595, 1); }),
+
+            new("rollerskates", "[i:5600] [c/62C1E5:Roller Skates round] [i:5600]",
+                () => { GiveEveryoneMiscEquips(5600, 3); }),
+
+            new("egg", "[i:6142] [c/FFA500:egg] [i:6142]",
+                () => { GiveEveryoneItems(6142, 1); }),
 
             new("fleshknuckles", "[i:3016] [c/FF0000:Flesh knuckles round] [i:3016]",
                 () => { GiveEveryoneArmor(3016); }),
@@ -1264,8 +1297,15 @@ namespace SpleefResurgence
 
         private string prevsidebar1 = "", prevsidebar2 = "", prevsidebar3 = "";
         private Stopwatch timeafterupdate1 = new(), timeafterupdate2 = new();
+
         private void SendScore()
         {
+            string texttosend1 = thethingy + Spleef.statusLavariseTime + "\n\n" + statusScore + "\n" + statusRound,
+                texttosend2 = thethingy + statusScore + "\n" + statusRound,
+                texttosend3 = thethingy + Spleef.statusLavariseTime;
+            bool send1 = texttosend1 != prevsidebar1 || timeafterupdate1.Elapsed.Seconds > 3,
+                send2 = texttosend2 != prevsidebar2 || timeafterupdate2.Elapsed.Seconds > 3,
+                send3 = texttosend3 != prevsidebar3;
             foreach (TSPlayer player in TShock.Players)
             {
                 if (player != null && player.Active && player.IsLoggedIn && player.Account.Name != null)
@@ -1275,32 +1315,29 @@ namespace SpleefResurgence
                     {
                         if (settings.ShowLavarise)
                         {
-                            string texttosend = thethingy + Spleef.statusLavariseTime + "\n\n" + statusScore + "\n" + statusRound;
-                            if (texttosend != prevsidebar1 || timeafterupdate1.Elapsed.Seconds > 3)
+                            if (send1)
                             {
-                                player.SendData(PacketTypes.Status, texttosend, number2: 1);
-                                prevsidebar1 = texttosend;
+                                player.SendData(PacketTypes.Status, texttosend1, number2: 1);
+                                prevsidebar1 = texttosend1;
                                 timeafterupdate1.Restart();
                             }
                         }
                         else
                         {
-                            string texttosend = thethingy + statusScore + "\n" + statusRound;
-                            if (texttosend != prevsidebar2 || timeafterupdate2.Elapsed.Seconds > 3)
+                            if (send2)
                             {
-                                player.SendData(PacketTypes.Status, texttosend, number2: 1);
-                                prevsidebar2 = texttosend;
+                                player.SendData(PacketTypes.Status, texttosend2, number2: 1);
+                                prevsidebar2 = texttosend2;
                                 timeafterupdate2.Restart();
                             }
                         }
                     }
                     else if (settings.ShowLavarise)
                     {
-                        string texttosend = thethingy + Spleef.statusLavariseTime;
-                        if (texttosend != prevsidebar3)
+                        if (send3)
                         {
-                            player.SendData(PacketTypes.Status, texttosend, number2: 1);
-                            prevsidebar3 = texttosend;
+                            player.SendData(PacketTypes.Status, texttosend3, number2: 1);
+                            prevsidebar3 = texttosend3;
                         }
                     }
                 }
@@ -1605,7 +1642,7 @@ namespace SpleefResurgence
                     break;
                 default:
                     GiveEveryoneItems(itemID, itemAmount);
-                    TSPlayer.All.SendMessage($"[i:{itemID}] {itemID} have been given out! ^_^ [i:{itemID}]", Color.DeepPink);
+                    TSPlayer.All.SendMessage($"[i:{itemID}] {GameType}s have been given out! ^_^ [i:{itemID}]", Color.DeepPink);
                     break;
             }
         }
