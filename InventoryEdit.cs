@@ -137,6 +137,15 @@ namespace SpleefResurgence
             int itemID = Convert.ToInt32(args.Parameters[2]);
             AddMiscEquip(plr, slot, itemID);
         }
+
+        public static void ClearPlayerBuffs(TSPlayer player)
+        {
+            for (int i = 0; i < player.TPlayer.buffType.Length; i++)
+            {
+                player.TPlayer.DelBuff(i);
+            }
+            player.SendData(PacketTypes.PlayerBuff);
+        }
         /*
         public static void SetInventory(List<InventorySlot> InvSlots, TSPlayer player)
         {

@@ -1,151 +1,189 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text.Json;
-using System.Text.Json.Serialization;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
+﻿using System.Text.Json;
 using TShockAPI;
 
 namespace SpleefResurgence.Game
 {
     public class GameConfig
     {
-        private readonly static string folderPath = Path.Combine(TShock.SavePath, "Spleef");
-        private readonly static string ArenaPath = Path.Combine(folderPath, "Arena Templates");
-        private readonly static string GimmickPath = Path.Combine(folderPath, "Gimmick Templates");
-        private readonly static string MapPath = Path.Combine(folderPath, "Map Templates");
+        private static readonly string FolderPath = Path.Combine(TShock.SavePath, "Spleef");
+        private static readonly string ArenaPath = Path.Combine(FolderPath, "Arena Templates");
+        private static readonly string GimmickPath = Path.Combine(FolderPath, "gimmicks.json");
 
         public static void SetupConfig()
         {
-            Directory.CreateDirectory(folderPath);
-            Directory.CreateDirectory(ArenaPath);
-            Directory.CreateDirectory(MapPath);
-            Directory.CreateDirectory(GimmickPath);
-
-            foreach (var arenaName in Directory.EnumerateFiles(ArenaPath))
+            if (!File.Exists(GimmickPath))
             {
-                string fileName = Path.GetFileName(arenaName);
-                fileName = fileName.Substring(0, fileName.Length - 5);
-                Directory.CreateDirectory(Path.Combine(MapPath, fileName));
+                Directory.CreateDirectory(FolderPath);
+                Directory.CreateDirectory(ArenaPath);
+
+                GimmickJson.SaveGimmicks(new()
+                {
+                    ["normal"] = new GimmickNone()
+                });
             }
-
-            if (!File.Exists(Path.Combine(GimmickPath, "normal.json")))
-            {
-                Gimmick normal = new GimmickNone("normal");
-                GimmickJson.SaveGimmick(normal, "normal");
-            }      
-        }
+    }
 
         public class ArenaJson
         {
+            private static readonly JsonSerializerOptions Options = new()
+            {
+                WriteIndented = true
+            };
+
             public static void SaveArena(Arena arena)
             {
-                string json = JsonConvert.SerializeObject(arena);
-                string filePath = Path.Combine(ArenaPath, $"{arena.Name.ToLowerInvariant}.json");
-                File.WriteAllText(filePath, json);
+                string folder = Path.Combine(ArenaPath, arena.Name);
+
+                Directory.CreateDirectory(folder);
+
+                File.WriteAllText(
+                    Path.Combine(folder, "arena.json"),
+                    JsonSerializer.Serialize(arena, Options));
             }
 
-            public static Arena LoadArena(string name)
+            public static Arena LoadArena(string arenaName)
             {
-                string filePath = Path.Combine(ArenaPath, $"{name}.json");
-                string json = File.ReadAllText(filePath);
-                return JsonConvert.DeserializeObject<Arena>(json);
+                string json = File.ReadAllText(
+                    Path.Combine(ArenaPath, arenaName, "arena.json"));
+
+                return JsonSerializer.Deserialize<Arena>(json)!;
             }
 
             public static List<string> ListArenaNames()
             {
-                List<string> arenaNames = new List<string>();
-                foreach (var arena in Directory.EnumerateFiles(ArenaPath))
-                {
-                    string fileName = Path.GetFileName(arena);
-                    fileName = fileName.Substring(0, fileName.Length - 5);
-                    arenaNames.Add(fileName);
-                }
-                return arenaNames;
-            }
-        }
-
-        public class GimmickJson
-        {
-            public static void SaveGimmick(Gimmick gimmick, string name)
-            {
-                var options = new JsonSerializerOptions { WriteIndented = true };
-                var json = System.Text.Json.JsonSerializer.Serialize(gimmick, options);
-                string filePath = Path.Combine(GimmickPath, $"{name.ToLowerInvariant()}.json");
-                File.WriteAllText(filePath, json);
+                return Directory.EnumerateDirectories(ArenaPath).Select(Path.GetFileName).ToList();
             }
 
-            public static Gimmick LoadGimmick(string name)
+            public static bool DeleteArena(string arenaName)
             {
-                string filePath = Path.Combine(GimmickPath, $"{name}.json");
-                var options = new JsonSerializerOptions();
-                string json = File.ReadAllText(filePath);
-
-                return System.Text.Json.JsonSerializer.Deserialize<Gimmick>(json, options);
-            }
-
-            public static List<string> ListGimmickNames()
-            {
-                List<string> gimmickNames = new List<string>();
-                foreach (var gimmick in Directory.EnumerateFiles(GimmickPath))
-                {
-                    string fileName = Path.GetFileName(gimmick);
-                    fileName = fileName.Substring(0, fileName.Length - 5);
-                    gimmickNames.Add(fileName);
-                }
-                return gimmickNames;
+                string folder = Path.Combine(ArenaPath, arenaName);
+                if (!Directory.Exists(folder))
+                    return false;
+                Directory.Delete(folder, true);
+                return true;
             }
         }
 
         public class MapJson
         {
-            public static void SaveMap(Map map, string name, string arenaName)
+            private static readonly JsonSerializerOptions Options = new()
             {
-                var options = new JsonSerializerOptions { WriteIndented = true };
-                var json = System.Text.Json.JsonSerializer.Serialize(map, options);
-                string filePath = Path.Combine(MapPath, arenaName, $"{name.ToLowerInvariant}.json");
-                File.WriteAllText(filePath, json);
+                WriteIndented = true
+            };
+
+            public static void SaveMaps(List<Map> maps, string arenaName)
+            {
+                string folder = Path.Combine(ArenaPath, arenaName);
+
+                Directory.CreateDirectory(folder);
+
+                File.WriteAllText(
+                    Path.Combine(folder, "maps.json"),
+                    JsonSerializer.Serialize(maps, Options));
             }
 
-            public static Map LoadMap(string name, string arenaName)
+            public static List<Map> LoadMaps(string arenaName)
             {
-                string filePath = Path.Combine(MapPath, arenaName, $"{name}.json");
-                var options = new JsonSerializerOptions();
-                string json = File.ReadAllText(filePath);
-                return System.Text.Json.JsonSerializer.Deserialize<Map>(json, options);
+                string file = Path.Combine(ArenaPath, arenaName, "maps.json");
+
+                if (!File.Exists(file))
+                    return new();
+
+                return JsonSerializer.Deserialize<List<Map>>(
+                    File.ReadAllText(file)) ?? new();
+            }
+
+            public static void SaveMap(Map map, string arenaName)
+            {
+                var maps = LoadMaps(arenaName);
+                var existingMap = maps.FirstOrDefault(x => x.Name == map.Name);
+                if (existingMap != null)
+                    maps.Remove(existingMap);
+                maps.Add(map);
+                SaveMaps(maps, arenaName);
+            }
+
+            public static Map LoadMap(string arenaName, string mapName)
+            {
+                var maps = LoadMaps(arenaName);
+                return maps.FirstOrDefault(x => x.Name == mapName) ?? throw new Exception($"Map '{mapName}' not found in arena '{arenaName}'.");
+            }
+                
+            public static bool DeleteMap(string arenaName, string mapName)
+            {
+                var maps = LoadMaps(arenaName);
+                var mapToRemove = maps.FirstOrDefault(x => x.Name == mapName);
+                if (mapToRemove == null)
+                    return false;
+                maps.Remove(mapToRemove);
+                SaveMaps(maps, arenaName);
+                return true;
             }
 
             public static List<string> ListMapNames(string arenaName)
             {
-                List<string> mapNames = new List<string>();
-                string directoryPath = Path.Combine(MapPath, arenaName);
-                if (!Directory.Exists(directoryPath))
-                    return mapNames;
-                foreach (var map in Directory.EnumerateFiles(directoryPath))
-                {
-                    string fileName = Path.GetFileName(map);
-                    fileName = fileName.Substring(0, fileName.Length - 5);
-                    mapNames.Add(fileName);
-                }
-                return mapNames;
+                return LoadMaps(arenaName)
+                    .Select(x => x.Name)
+                    .ToList();
+            }
+        }
+
+        public class GimmickJson
+        {
+            private static readonly JsonSerializerOptions Options = new()
+            {
+                WriteIndented = true
+            };
+
+            public static void SaveGimmicks(Dictionary<string, Gimmick> gimmicks)
+            {
+                File.WriteAllText(
+                    GimmickPath,
+                    JsonSerializer.Serialize(gimmicks, Options));
             }
 
-            public static List<Tuple<string, List<string>>> ListAllMapNames()
+            public static Dictionary<string, Gimmick> LoadGimmicks()
             {
-                List<Tuple<string, List<string>>> arenaMaps = new List<Tuple<string, List<string>>>();
-                foreach (var arena in Directory.EnumerateDirectories(MapPath))
-                {
-                    string arenaName = Path.GetFileName(arena);
-                    List<string> mapNames = new List<string>();
-                    foreach (var map in Directory.EnumerateFiles(arena))
-                    {
-                        string fileName = Path.GetFileName(map);
-                        fileName = fileName.Substring(0, fileName.Length - 5);
-                        mapNames.Add(fileName);
-                    }
-                    arenaMaps.Add(new Tuple<string, List<string>>(arenaName, mapNames));
-                }
-                return arenaMaps;
+                if (!File.Exists(GimmickPath))
+                    return new();
+
+                return JsonSerializer.Deserialize<Dictionary<string, Gimmick>>(
+                    File.ReadAllText(GimmickPath)) ?? new();
+            }
+
+            public static Gimmick? GetGimmick(string name)
+            {
+                var gimmicks = LoadGimmicks();
+
+                gimmicks.TryGetValue(name.ToLowerInvariant(), out var gimmick);
+
+                return gimmick;
+            }
+
+            public static List<string> ListGimmickNames()
+            {
+                return LoadGimmicks().Keys.ToList();
+            }
+
+            public static void SaveGimmick(string name, Gimmick gimmick)
+            {
+                var gimmicks = LoadGimmicks();
+
+                gimmicks[name.ToLowerInvariant()] = gimmick;
+
+                SaveGimmicks(gimmicks);
+            }
+
+            public static bool RemoveGimmick(string name)
+            {
+                var gimmicks = LoadGimmicks();
+
+                if (!gimmicks.Remove(name.ToLowerInvariant()))
+                    return false;
+
+                SaveGimmicks(gimmicks);
+
+                return true;
             }
         }
     }

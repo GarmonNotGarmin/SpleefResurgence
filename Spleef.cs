@@ -11,6 +11,7 @@ using Terraria.DataStructures;
 using SpleefResurgence.Game;
 using SpleefResurgence.CustomCommands;
 using Timer = System.Timers.Timer;
+using SpleefResurgence.Game.Editor;
 namespace SpleefResurgence
 {
     [ApiVersion(2, 1)]
@@ -19,7 +20,7 @@ namespace SpleefResurgence
         public static Spleef Instance { get; private set; }
         private readonly SpleeGame spleeGame;
         private readonly BlockSpam blockSpam;
-
+        private readonly ArenaEditor arenaEditor = new();
 
         public static Random rnd = new();
 
@@ -73,7 +74,7 @@ namespace SpleefResurgence
         public override void Initialize()
         {
             GameConfig.SetupConfig();
-
+            arenaEditor.Initialize();
             Commands.ChatCommands.Add(new Command("spleef.customcommand", CCCommands.AddCustomCommand, "addcommand", "addc"));
             Commands.ChatCommands.Add(new Command("spleef.customcommand", CCCommands.DeleteCustomCommand, "delcommand", "delc"));
             Commands.ChatCommands.Add(new Command("spleef.customcommand", CCCommands.ListCustomCommand, "listcommand", "listc"));

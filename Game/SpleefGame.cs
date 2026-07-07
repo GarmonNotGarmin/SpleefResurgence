@@ -1,6 +1,7 @@
 ﻿using Microsoft.Xna.Framework;
 using Newtonsoft.Json;
 using System.Diagnostics;
+using System.Security.Policy;
 using System.Timers;
 using Terraria;
 using Terraria.ID;
@@ -41,6 +42,12 @@ namespace SpleefResurgence.Game
         public int X { get; set; }
         [JsonProperty("Y")]
         public int Y { get; set; }
+
+        public ArenaSpawn(int x, int y)
+        {
+            X = x;
+            Y = y;
+        }
     }
 
     public class Map
@@ -74,20 +81,27 @@ namespace SpleefResurgence.Game
 
         public string DefaultCustomLavariseCommand { get; set; } = "null";
 
-        public List<string> Maps;
+        public List<string> MapNames { get; set; } = new();
         [JsonIgnore]
         public byte CurrentPaint;
         [JsonIgnore]
         public Map CurrentMap;
+        [JsonIgnore]
+        public List<Map> Maps;
 
-        public Arena(string name, int tilePositionX, int tilePositionY, int width, int height, List<string> maps)
+        public Arena(string name, int tilePositionX, int tilePositionY, int width, int height, List<string> mapNames)
         {
             Name = name;
             TilePositionX = tilePositionX;
             TilePositionY = tilePositionY;
             Width = width;
             Height = height;
-            Maps = maps;
+            MapNames = mapNames;
+        }
+
+        public void Initialize()
+        {
+            Maps = GameConfig.MapJson.LoadMaps(Name);
         }
 
         public void TeleportPlayers(List<TSPlayer> players)
@@ -204,6 +218,7 @@ namespace SpleefResurgence.Game
     public class SpleefGame
     {
         public Arena Arena;
+        public Dictionary<string, Gimmick> Gimmicks;
         public List<Player> Players = new();
         private List<Player> RoundPlayers = new();
         public List<string> Hosters;
@@ -220,6 +235,8 @@ namespace SpleefResurgence.Game
         {
             isRound = false;
             Arena = arena;
+            Arena.Initialize();
+            Gimmicks = GameConfig.GimmickJson.LoadGimmicks();
             Players = new();
             this.isJoinable = isJoinable;
             this.isBettable = isBettable;
@@ -326,6 +343,53 @@ namespace SpleefResurgence.Game
             }
         }
 
+        private int GeneratePaintItemID()
+        {
+            Arena.CurrentPaint = (byte)Spleef.rnd.Next(31);
+            if (Arena.CurrentPaint == 13) //deep red paint
+                Arena.CurrentPaint = 29; //shadow paint goated
+            return Spleef.PaintIDtoItemID(Arena.CurrentPaint);
+        }
+
+        private string GenerateMusicBoxName()
+        {
+            CurrentMusicBoxID = Spleef.MusicBoxIDs[Spleef.rnd.Next(Spleef.MusicBoxIDs.Length)];
+            Item MusicBox = new Item();
+            MusicBox.SetDefaults(CurrentMusicBoxID);
+            string SongName = MusicBox.Name.Substring(MusicBox.Name.IndexOf('(') + 1, MusicBox.Name.IndexOf(')') - MusicBox.Name.IndexOf('(') - 1);
+            if (MusicBox.Name.Split(' ')[0] == "Otherworldly")
+                SongName = "Otherworldly " + SongName;
+            return SongName;
+        }
+
+        private void SetDefaultPlayerShi(List<TSPlayer> players)
+        {
+            string SongName = GenerateMusicBoxName();
+            int paintItemID = GeneratePaintItemID();
+            players.ForEach(player =>
+            {
+                InventoryEdit.ClearPlayerEverything(player);
+                InventoryEdit.ClearPlayerBuffs(player);
+                InventoryEdit.AddItem(player, 0, 1, ItemID.CobaltPickaxe);
+                InventoryEdit.AddItem(player, 9, 1, ItemID.Binoculars);
+                InventoryEdit.AddItem(player, 40, 1, ItemID.CobaltPickaxe);
+                player.SetBuff(BuffID.Honey);
+                player.SetBuff(BuffID.Shine);
+                player.SetBuff(BuffID.NightOwl);
+
+                if (SpleefUserSettings.GetSettings(player.Account.Name).GetPaintSprayer)
+                {
+                    InventoryEdit.AddArmor(player, ItemID.PaintSprayer);
+                    InventoryEdit.AddItem(player, 20, 9999, paintItemID);
+                }
+                if (SpleefUserSettings.GetSettings(player.Account.Name).GetMusicBox)
+                {
+                    InventoryEdit.AddArmor(player, CurrentMusicBoxID);
+                    player.SendMessage($"[i:{CurrentMusicBoxID}] Playing {SongName} [i:{CurrentMusicBoxID}]", Color.LightPink);
+                }
+            });
+        }
+
         public void StartRound(List<Gimmick> gimmicks, string mapName)
         {
             RoundPlayers = Players.FindAll(p => p.isIngame);
@@ -335,49 +399,17 @@ namespace SpleefResurgence.Game
 
             List<TSPlayer> players = RoundPlayers.Select(player => TShock.Players.FirstOrDefault(p => p.Name == player.Name)).ToList();
 
-            Arena.CurrentMap = GameConfig.MapJson.LoadMap(mapName, Arena.Name);
+            Arena.CurrentMap = Arena.Maps.FirstOrDefault(m => m.Name == mapName);
             Arena.PasteMap();
             Arena.TeleportPlayers(players);
             Arena.StartRise();
 
-            players.ForEach(player =>
-            {
-                InventoryEdit.ClearPlayerEverything(player);
-                InventoryEdit.AddItem(player, 0, 1, ItemID.CobaltPickaxe);
-                InventoryEdit.AddItem(player, 9, 1, ItemID.Binoculars);
-                InventoryEdit.AddItem(player, 40, 1, ItemID.CobaltPickaxe);
-                player.SetBuff(BuffID.Honey);
-                player.SetBuff(BuffID.Shine);
-                player.SetBuff(BuffID.NightOwl);
-            });
+            SetDefaultPlayerShi(players);
 
-            gimmicks.ForEach(gimmick => gimmick.ApplyGimmick(players));
+            gimmicks.ForEach(gimmick => gimmick.Apply(players));
             if (Arena.CurrentMap.AdditionalGimmicks != null && Arena.CurrentMap.AdditionalGimmicks.Count > 0)
-                Arena.CurrentMap.AdditionalGimmicks.ForEach(gimmick => gimmick.ApplyGimmick(players));
-   
-            CurrentMusicBoxID = Spleef.MusicBoxIDs[Spleef.rnd.Next(Spleef.MusicBoxIDs.Length)];
-            Item MusicBox = new Item();
-            MusicBox.SetDefaults(CurrentMusicBoxID);
-            string SongName = MusicBox.Name.Substring(MusicBox.Name.IndexOf('(') + 1, MusicBox.Name.IndexOf(')') - MusicBox.Name.IndexOf('(') - 1);
-            if (MusicBox.Name.Split(' ')[0] == "Otherworldly")
-                SongName = "Otherworldly " + SongName;   
-            Arena.CurrentPaint = (byte)Spleef.rnd.Next(31);
-            if (Arena.CurrentPaint == 13) //deep red paint
-                Arena.CurrentPaint = 29; //shadow paint goated
-            var PaintItemID = Spleef.PaintIDtoItemID(Arena.CurrentPaint);
-            players.ForEach(player =>
-            {
-                if (SpleefUserSettings.GetSettings(player.Account.Name).GetPaintSprayer)
-                {
-                    InventoryEdit.AddArmor(player, ItemID.PaintSprayer);
-                    InventoryEdit.AddItem(player, 20, 9999, ItemID.PaintSprayer);
-                }
-                if (SpleefUserSettings.GetSettings(player.Account.Name).GetMusicBox)
-                {
-                    InventoryEdit.AddArmor(player, CurrentMusicBoxID);
-                    player.SendMessage($"[i:{CurrentMusicBoxID}] Playing {SongName} [i:{CurrentMusicBoxID}]", Color.LightPink);
-                }
-            });
+                Arena.CurrentMap.AdditionalGimmicks.ForEach(gimmick => gimmick.Apply(players));
+ 
             ServerApi.Hooks.NetGetData.Register(Spleef.Instance, OnGetData);
             isRound = true;
             TShock.Utils.Broadcast($"Round {RoundCounter} started", Color.DarkSeaGreen);

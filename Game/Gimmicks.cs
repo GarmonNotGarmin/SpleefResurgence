@@ -8,27 +8,25 @@ namespace SpleefResurgence.Game
     [JsonConverter(typeof(GimmickJsonConverter))]
     public abstract class Gimmick
     {
-        public string Name { get; set; }
         public int WaitTime { get; set; }
 
-        public async void ApplyGimmick(List<TSPlayer> players)
+        public async void Apply(List<TSPlayer> players)
         {
             if (players == null || players.Count == 0)
                 return;
             if (WaitTime != 0)
                 await Task.Delay(WaitTime);
-            GimmickAction(players);
+            Action(players);
         }
 
-        public abstract void GimmickAction(List<TSPlayer> players);
+        public abstract void Action(List<TSPlayer> players);
     }
 
     public class GimmickNone : Gimmick
     {
-        public override void GimmickAction(List<TSPlayer> players) { }
-        public GimmickNone(string name)
+        public override void Action(List<TSPlayer> players) { }
+        public GimmickNone()
         {
-            Name = name;
             WaitTime = 0;
         }
     }
@@ -38,11 +36,10 @@ namespace SpleefResurgence.Game
         public int ItemID { get; set; }
         public int Stack { get; set; } = 1;
 
-        public override void GimmickAction(List<TSPlayer> players) => players.ForEach(player => player.GiveItem(ItemID, Stack));
+        public override void Action(List<TSPlayer> players) => players.ForEach(player => player.GiveItem(ItemID, Stack));
 
-        public GimmickItem(string name, int itemID, int waitTime, int stack = 1)
+        public GimmickItem(int itemID, int waitTime, int stack = 1)
         {
-            Name = name;
             ItemID = itemID;
             Stack = stack;
             WaitTime = waitTime;
@@ -54,11 +51,10 @@ namespace SpleefResurgence.Game
         public int ItemID { get; set; }
         public int Slot { get; set; } = -1;
 
-        public override void GimmickAction(List<TSPlayer> players) => players.ForEach(player => InventoryEdit.AddArmor(player, Slot, ItemID));
+        public override void Action(List<TSPlayer> players) => players.ForEach(player => InventoryEdit.AddArmor(player, Slot, ItemID));
 
-        public GimmickAccessory(string name, int itemID, int waitTime, int slot = -1)
+        public GimmickAccessory(int itemID, int waitTime, int slot = -1)
         {
-            Name = name;
             ItemID = itemID;
             Slot = slot;
             WaitTime = waitTime;
@@ -70,11 +66,10 @@ namespace SpleefResurgence.Game
         public int BuffID { get; set; }
         public int BuffDuration { get; set; }
 
-        public override void GimmickAction(List<TSPlayer> players) => players.ForEach(player => player.SetBuff(BuffID, BuffDuration * 60));
+        public override void Action(List<TSPlayer> players) => players.ForEach(player => player.SetBuff(BuffID, BuffDuration * 60));
 
-        public GimmickBuff(string name, int buffID, int buffDuration, int waitTime)
+        public GimmickBuff(int buffID, int buffDuration, int waitTime)
         {
-            Name = name;
             BuffID = buffID;
             BuffDuration = buffDuration;
             WaitTime = waitTime;
@@ -85,10 +80,9 @@ namespace SpleefResurgence.Game
     {
         private const int MountSlot = 3;
         public int ItemID { get; set; }
-        public override void GimmickAction(List<TSPlayer> players) => players.ForEach(player => InventoryEdit.AddMiscEquip(player, MountSlot, ItemID));
-        public GimmickMount(string name, int itemID, int waitTime)
+        public override void Action(List<TSPlayer> players) => players.ForEach(player => InventoryEdit.AddMiscEquip(player, MountSlot, ItemID));
+        public GimmickMount(int itemID, int waitTime)
         {
-            Name = name;
             ItemID = itemID;
             WaitTime = waitTime;
         }
@@ -101,7 +95,7 @@ namespace SpleefResurgence.Game
         public int MobSpawnTileX { get; set; }
         public int MobSpawnTileY { get; set; }
 
-        public override void GimmickAction(List<TSPlayer> players)
+        public override void Action(List<TSPlayer> players)
         {
             var source = new EntitySource_DebugCommand();
             for (int i = 0; i < MobAmount; i++)
@@ -113,9 +107,8 @@ namespace SpleefResurgence.Game
             }
         }
 
-        public GimmickMob(string name, int mobID, int mobAmount, int waitTime, int mobSpawnTileX, int mobSpawnTileY)
+        public GimmickMob(int mobID, int mobAmount, int waitTime, int mobSpawnTileX, int mobSpawnTileY)
         {
-            Name = name;
             MobID = mobID;
             MobAmount = mobAmount;
             MobSpawnTileX = mobSpawnTileX;

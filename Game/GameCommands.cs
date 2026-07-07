@@ -1,7 +1,8 @@
-﻿using System;
-using TShockAPI;
-using Microsoft.Xna.Framework;
+﻿using Microsoft.Xna.Framework;
+using System;
 using Terraria;
+using TShockAPI;
+using static SpleefResurgence.Game.GameConfig;
 namespace SpleefResurgence.Game
 {
     public class GameCommands
@@ -52,11 +53,11 @@ namespace SpleefResurgence.Game
                         case "map":
                             if (args.Parameters.Count < 3)
                             {
-                                List<Tuple<string, List<string>>> mapsList = GameConfig.MapJson.ListAllMapNames();
-                                foreach (var map in mapsList)
+                                foreach (string arenaName in ArenaJson.ListArenaNames())
                                 {
-                                    args.Player.SendMessage($"{map.Item1}:", Color.OrangeRed);
-                                    args.Player.SendInfoMessage(string.Join(", ", map.Item2));
+                                    List<string> mapsList = MapJson.ListMapNames(arenaName);
+                                    args.Player.SendMessage($"{arenaName}:", Color.OrangeRed);
+                                    args.Player.SendInfoMessage(string.Join(", ", mapsList));
                                 }
                                 return;
                             }
@@ -80,7 +81,7 @@ namespace SpleefResurgence.Game
                     bool isJoinable = true;
                     bool isBettable = false;
 
-                    Arena arena = GameConfig.ArenaJson.LoadArena(templateName);
+                    Arena arena = ArenaJson.LoadArena(templateName);
                     SpleefGame game = new SpleefGame(arena, args.Player.Account.Name, isJoinable, isBettable);
                     Games.Add(game);
                     args.Player.SendSuccessMessage($"created a new game with the name {templateName}! It has the id {Games.Count - 1}");
@@ -127,13 +128,24 @@ namespace SpleefResurgence.Game
                             args.Player.SendErrorMessage("invalid map id!");
                             return;
                         }
-                        mapName = currentGame.Arena.Maps[mapID];
+                        mapName = currentGame.Arena.MapNames[mapID];
                     }
                     List<Gimmick> gimmicks = new List<Gimmick>();
                     for (int i = 2; i < args.Parameters.Count; i++)
                     {
                         string gimmickName = args.Parameters[i];
-                        Gimmick gimmick = GameConfig.GimmickJson.LoadGimmick(gimmickName);
+                        Gimmick gimmick;
+                        if (int.TryParse(gimmickName, out int gimmickID))
+                        {
+                            if (gimmickID < 0 || gimmickID >= currentGame.Gimmicks.Count)
+                            {
+                                args.Player.SendErrorMessage("invalid gimmick id!");
+                                return;
+                            }
+                            gimmick = currentGame.Gimmicks.ToList()[gimmickID].Value;
+                        }
+                        else
+                            gimmick = currentGame.Gimmicks[gimmickName];
                         if (gimmick == null)
                         {
                             args.Player.SendErrorMessage($"Gimmick {gimmickName} not found!");
