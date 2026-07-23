@@ -62,7 +62,7 @@ public class Schematic
 
 public class SchematicJson
 {
-    private static readonly string SchematicPath = Path.Combine(TShock.SavePath, "Schematics");
+    private static readonly string SchematicPath = Path.Combine(TShock.SavePath, "Spleef", "Schematics");
     private static readonly JsonSerializerOptions Options = new()
     {
         WriteIndented = true,
