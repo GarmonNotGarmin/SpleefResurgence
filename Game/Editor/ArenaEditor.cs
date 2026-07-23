@@ -15,13 +15,38 @@ namespace SpleefResurgence.Game.Editor
             MapEdit,
             MapEditSpawnAdd,
             MapEditSpawnEdit,
-            MapEditSpawnEditEdit //i swear this makes sense
+            MapEditSpawnMoving,
+            GimmickEdit
         }
 
-        private Dictionary<int, EditMode> playerEditMode = new();
-        private Dictionary<int, int> playerEditMapSpawnPointID = new();
-        private Dictionary<int, Action<TSPlayer, int, int>> playerTileEditCallback = new();
-        private Dictionary<int, Action<TSPlayer, string>> playerChatCallback = new();
+        enum GimmickEditStep
+        {
+            None,
+            Type,
+            Values
+        }
+
+        enum GimmickType
+        {
+            None,
+            Item,
+            Accessory,
+            Buff,
+            Mount,
+            Mob
+        }
+
+        class PlayerEditor
+        {
+            public EditMode Mode = EditMode.None;
+            public int MapSpawnPointID = -1;
+            public Action<TSPlayer, int, int> TileEditCallback = null;
+            public Action<TSPlayer, string> ChatCallback = null;
+            public GimmickEditStep GimmickEditStep = GimmickEditStep.None;
+            public GimmickType CurrentGimmickType = GimmickType.None;
+        }
+
+        private Dictionary<int, PlayerEditor> PlayerEditors = new();
 
         public void Initialize()
         {
@@ -54,18 +79,19 @@ namespace SpleefResurgence.Game.Editor
 
         private void StartArenaEditing(TSPlayer player, Arena arenaToEdit)
         {
-            playerEditMode[player.Index] = EditMode.ArenaCorner1;
+            PlayerEditors[player.Index].Mode = EditMode.ArenaCorner1;
             player.SendInfoMessage($"Editing arena {arenaToEdit.Name}.\nSet corner 1 by breaking/placing a tile.\nType 'cancel' to cancel, 'skip' to skip to the next step, or 'lavarise <command>' to set the default lavarise command.");
             if (arenaToEdit.TilePositionX != 0 && arenaToEdit.TilePositionY != 0)
                 player.SendInfoMessage($"Current corner 1 (top left) is at {arenaToEdit.TilePositionX},{arenaToEdit.TilePositionY}. You can skip to the next step if you want to keep it.");
-            playerTileEditCallback[player.Index] = (plr, x, y) =>
+            PlayerEditors[player.Index].TileEditCallback = (plr, x, y) =>
             {
-                switch (playerEditMode[plr.Index])
+                var editor = PlayerEditors[plr.Index];
+                switch (editor.Mode)
                 {
                     case EditMode.ArenaCorner1:
                         arenaToEdit.TilePositionX = x;
                         arenaToEdit.TilePositionY = y;
-                        playerEditMode[player.Index] = EditMode.ArenaCorner2;
+                        PlayerEditors[player.Index].Mode = EditMode.ArenaCorner2;
                         plr.SendSuccessMessage($"Set corner 1 of arena {arenaToEdit.Name} to {x},{y}. Now set corner 2.");
                         if (arenaToEdit.Width != 0 && arenaToEdit.Height != 0)
                             plr.SendInfoMessage($"Current corner 2 (bottom right) is at {arenaToEdit.TilePositionX + arenaToEdit.Width},{arenaToEdit.TilePositionY + arenaToEdit.Height}. You can skip to the next step if you want to keep it.");
@@ -78,38 +104,39 @@ namespace SpleefResurgence.Game.Editor
                         arenaToEdit.Width = cornerX2 - cornerX1;
                         arenaToEdit.Height = cornerY2 - cornerY1;
                         GameConfig.ArenaJson.SaveArena(arenaToEdit);
-                        playerEditMode[player.Index] = EditMode.None;
+                        PlayerEditors[player.Index].Mode = EditMode.None;
                         plr.SendSuccessMessage($"Set corner 2 of arena {arenaToEdit.Name} to {x},{y}. Arena saved.");
                         plr.SendInfoMessage($"The arena corners are set up from left top to right bottom, if you did them the other way they'll be recalculated automatically\nYou can check with /arena info {arenaToEdit.Name}");
-                        playerTileEditCallback.Remove(plr.Index);
+                        editor.ChatCallback = null;
                         break;
                 }
             };
 
-            playerChatCallback[player.Index] = (plr, text) =>
+            PlayerEditors[player.Index].ChatCallback = (plr, text) =>
             {
+                var editor = PlayerEditors[plr.Index];
                 if (text == "cancel")
                 {
-                    playerEditMode[plr.Index] = EditMode.None;
+                    editor.Mode = EditMode.None;
                     plr.SendInfoMessage($"Cancelled editing arena {arenaToEdit.Name}");
-                    playerChatCallback.Remove(plr.Index);
-                    playerTileEditCallback.Remove(plr.Index);
+                    editor.ChatCallback = null;
+                    editor.TileEditCallback = null;
                     return;
                 }
                 if (text == "skip")
                 {
-                    if (playerEditMode[plr.Index] == EditMode.ArenaCorner1)
+                    if (editor.Mode == EditMode.ArenaCorner1)
                     {
-                        playerEditMode[plr.Index] = EditMode.ArenaCorner2;
+                        editor.Mode = EditMode.ArenaCorner2;
                         plr.SendInfoMessage($"Skipped setting corner 1 of arena {arenaToEdit.Name}. Now set corner 2.");
                     }
-                    else if (playerEditMode[plr.Index] == EditMode.ArenaCorner2)
+                    else if (editor.Mode == EditMode.ArenaCorner2)
                     {
                         GameConfig.ArenaJson.SaveArena(arenaToEdit);
-                        playerEditMode[plr.Index] = EditMode.None;
+                        editor.Mode = EditMode.None;
                         plr.SendSuccessMessage($"Skipped setting corner 2 of arena {arenaToEdit.Name}. Arena saved.");
-                        playerChatCallback.Remove(plr.Index);
-                        playerTileEditCallback.Remove(plr.Index);
+                        editor.ChatCallback = null;
+                        editor.TileEditCallback = null;
                     }
                 }
                 if (text.StartsWith("lavarise "))
@@ -119,7 +146,7 @@ namespace SpleefResurgence.Game.Editor
                     plr.SendSuccessMessage($"Set default lavarise command of arena {arenaToEdit.Name} to {arenaToEdit.DefaultCustomLavariseCommand}");
                 }
 
-                plr.SendInfoMessage($"Editing arena {arenaToEdit.Name}.\nCurrent state: {playerEditMode[plr.Index]}.\n Type 'cancel' to cancel, 'skip' to skip, or 'lavarise <command>' to set the default lavarise command.");
+                plr.SendInfoMessage($"Editing arena {arenaToEdit.Name}.\nCurrent state: {editor.Mode}.\n Type 'cancel' to cancel, 'skip' to skip, or 'lavarise <command>' to set the default lavarise command.");
             };
         }
 
@@ -237,19 +264,13 @@ namespace SpleefResurgence.Game.Editor
 
         private void StartMapEditing(TSPlayer player, Map mapToEdit, string arenaName)
         {
-            playerEditMode[player.Index] = EditMode.MapEdit;
-            player.SendInfoMessage($"Editing map {mapToEdit.Name}.\nType 'cancel' to cancel, 'spawnadd' to set a spawn at where you're standing or 'spawnedit' to edit an existing one");
-            playerChatCallback[player.Index] = (plr, text) =>
+            PlayerEditors[player.Index].Mode = EditMode.MapEdit;
+            player.SendInfoMessage($"Editing map {mapToEdit.Name}");
+            player.SendInfoMessage($"Type 'cancel' to cancel, 'spawnadd' to set a spawn at where you're standing or 'spawnedit' to edit an existing one");
+            PlayerEditors[player.Index].ChatCallback = (plr, text) =>
             {
-                if (text == "cancel")
-                {
-                    playerEditMode[plr.Index] = EditMode.None;
-                    plr.SendInfoMessage($"Cancelled editing map {mapToEdit.Name}");
-                    DeletePlayerBuff(plr, BuffID.Webbed);
-                    playerChatCallback.Remove(plr.Index);
-                    return;
-                }
-                if (playerEditMode[plr.Index] == EditMode.MapEdit)
+                var editor = PlayerEditors[plr.Index];
+                if (editor.Mode == EditMode.MapEdit)
                 {
                     if (text == "spawnadd")
                     {
@@ -258,7 +279,7 @@ namespace SpleefResurgence.Game.Editor
                         plr.Teleport(x * 16, y * 16);
                         plr.SetBuff(BuffID.Webbed, 100000);
                         player.SendInfoMessage($"Teleported to the tile spawn point {x}, {y}, type 'confirm' or 'undo'");
-                        playerEditMode[plr.Index] = EditMode.MapEditSpawnAdd;
+                        editor.Mode = EditMode.MapEditSpawnAdd;
                         return;
                     }
                     if (text == "spawnedit")
@@ -298,21 +319,27 @@ namespace SpleefResurgence.Game.Editor
                         plr.Teleport(x * 16, y * 16);
                         plr.SetBuff(BuffID.Webbed, 100000);
                         player.SendInfoMessage($"Teleported to the current tile spawn point {x},{y}, type 'edit' or 'undo'");
-                        playerEditMapSpawnPointID[plr.Index] = index;
-                        playerEditMode[plr.Index] = EditMode.MapEditSpawnEdit;
+                        editor.MapSpawnPointID = index;
+                        editor.Mode = EditMode.MapEditSpawnEdit;
                         return;
                     }
+                    if (text == "gimmickadd")
+                    {
+                        editor.Mode = EditMode.GimmickEdit;
+                        GimmickAddStep(text, editor, player, mapToEdit, arenaName);
+                        return;
+                    }          
                 }
-                else if (playerEditMode[plr.Index] == EditMode.MapEditSpawnAdd)
+                else if (editor.Mode == EditMode.MapEditSpawnAdd)
                 {
                     if (text == "confirm")
                     {
-                        if (playerEditMapSpawnPointID.ContainsKey(plr.Index))
+                        if (editor.MapSpawnPointID != -1)
                         {
-                            int index = playerEditMapSpawnPointID[plr.Index];
+                            int index = editor.MapSpawnPointID;
                             mapToEdit.Spawns[index] = new(plr.TileX, plr.TileY);
                             plr.SendSuccessMessage($"Edited spawn point {index} to {plr.TileX},{plr.TileY} in map {mapToEdit.Name}");
-                            playerEditMapSpawnPointID.Remove(plr.Index);
+                            editor.MapSpawnPointID = -1;
                         }
                         else
                         {
@@ -323,23 +350,15 @@ namespace SpleefResurgence.Game.Editor
                         }
                         DeletePlayerBuff(plr, BuffID.Webbed);
                         GameConfig.MapJson.SaveMap(mapToEdit, arenaName);
-                        playerEditMode[plr.Index] = EditMode.MapEdit;
-                    }
-                    if (text == "undo")
-                    {                 
-                        DeletePlayerBuff(plr, BuffID.Webbed);
-                        plr.SendInfoMessage($"Cancelled adding spawn point");
-                        playerEditMode[plr.Index] = EditMode.MapEdit;
-                        playerEditMapSpawnPointID.Remove(plr.Index);
-                        return;
+                        editor.Mode = EditMode.MapEdit;
                     }
                 }
-                else if (playerEditMode[plr.Index] == EditMode.MapEditSpawnEdit)
+                else if (editor.Mode == EditMode.MapEditSpawnEdit)
                 {
                     if (text == "edit")
                     {
                         DeletePlayerBuff(plr, BuffID.Webbed);
-                        playerEditMode[plr.Index] = EditMode.MapEditSpawnEditEdit;
+                        editor.Mode = EditMode.MapEditSpawnMoving;
                         plr.SendInfoMessage($"Editing spawn point, type 'set' to set a new spawn point or 'undo' to cancel");
                         return;
                     }
@@ -347,12 +366,12 @@ namespace SpleefResurgence.Game.Editor
                     {
                         DeletePlayerBuff(plr, BuffID.Webbed);
                         plr.SendInfoMessage($"Cancelled editing spawn point");
-                        playerEditMode[plr.Index] = EditMode.MapEdit;
-                        playerEditMapSpawnPointID.Remove(plr.Index);
+                        editor.Mode = EditMode.MapEdit;
+                        editor.MapSpawnPointID = -1;
                         return;
                     }
                 }
-                else if (playerEditMode[plr.Index] == EditMode.MapEditSpawnEditEdit)
+                else if (editor.Mode == EditMode.MapEditSpawnMoving)
                 {
                     if (text == "set")
                     {
@@ -361,19 +380,156 @@ namespace SpleefResurgence.Game.Editor
                         plr.Teleport(x * 16, y * 16);
                         plr.SetBuff(BuffID.Webbed, 100000);
                         player.SendInfoMessage($"Teleported to the tile spawn point {x},{y}, type 'confirm' or 'undo'");
-                        playerEditMode[plr.Index] = EditMode.MapEditSpawnAdd;
+                        editor.Mode = EditMode.MapEditSpawnAdd;
                         return;
                     }
-                    if (text == "undo")
-                    {
-                        plr.SendInfoMessage($"Cancelled editing spawn point");
-                        playerEditMode[plr.Index] = EditMode.MapEdit;
-                        playerEditMapSpawnPointID.Remove(plr.Index);
-                        return;
-                    }
-
+                }
+                else if (editor.Mode == EditMode.GimmickEdit)
+                {
+                    GimmickAddStep(text, editor, player, mapToEdit, arenaName);
                 }
             };
+        }
+
+        private void GimmickAddStep(string text, PlayerEditor editor, TSPlayer player, Map mapToEdit, string arenaName)
+        {
+            if (editor.GimmickEditStep == GimmickEditStep.None)
+            {
+                editor.GimmickEditStep = GimmickEditStep.Type;
+                player.SendInfoMessage("Set the type of gimmick you want to add (1 - item, 2 - accessory, 3 - buff, 4 - mount, 5 - mob");
+                if (editor.GimmickEditStep == GimmickEditStep.Type)
+                {
+                    editor.GimmickEditStep = GimmickEditStep.Values;
+                    switch (text)
+                    {
+                        case "1":
+                        case "item":
+                            editor.CurrentGimmickType = GimmickType.Item;
+                            player.SendInfoMessage("Set the item ID and wait time (in seconds) for the gimmick, separated by a space");
+                            break;
+                        case "2":
+                        case "accessory":
+                            editor.CurrentGimmickType = GimmickType.Accessory;
+                            player.SendInfoMessage("Set the item ID, wait time (in seconds), and slot for the gimmick, separated by spaces");
+                            player.SendInfoMessage("Set slot to -1 to let the game choose the next free slot of a player");
+                            break;
+                        case "3":
+                        case "buff":
+                            editor.CurrentGimmickType = GimmickType.Buff;
+                            player.SendInfoMessage("Set the buff ID, buff duration (in seconds), and wait time (in seconds) for the gimmick, separated by spaces");
+                            break;
+                        case "4":
+                        case "mount":
+                            editor.CurrentGimmickType = GimmickType.Mount;
+                            player.SendInfoMessage("Set the item ID and wait time (in seconds) for the gimmick, separated by a space");
+                            break;
+                        case "5":
+                        case "mob":
+                            editor.CurrentGimmickType = GimmickType.Mob;
+                            player.SendInfoMessage("Set the mob ID, mob amount, mob spawn tile X, mob spawn tile Y, and wait time (in seconds) for the gimmick, separated by spaces");
+                            break;
+                        default:
+                            editor.GimmickEditStep = GimmickEditStep.Type;
+                            player.SendErrorMessage("Invalid gimmick type, please choose from 1 - item, 2 - accessory, 3 - buff, 4 - mount, 5 - mob");
+                            break;
+                    }
+                }
+                if (editor.GimmickEditStep == GimmickEditStep.Values)
+                {
+                    switch (editor.CurrentGimmickType)
+                    {
+                        case GimmickType.Item:
+                            var itemValues = text.Split(' ');
+                            if (itemValues.Length != 2)
+                            {
+                                player.SendErrorMessage("Invalid number of values for the item gimmick, please provide item ID and wait time (in seconds)");
+                                return;
+                            }
+                            if (!int.TryParse(itemValues[0], out int itemID) || !int.TryParse(itemValues[1], out int waitTime))
+                            {
+                                player.SendErrorMessage("Invalid values for the item gimmick, please provide valid integers for item ID and wait time (in seconds)");
+                                return;
+                            }
+                            var itemGimmick = new GimmickItem(itemID, waitTime);
+                            mapToEdit.AdditionalGimmicks.Add(itemGimmick);
+                            GameConfig.MapJson.SaveMap(mapToEdit, arenaName);
+                            player.SendSuccessMessage($"Added an item gimmick with item ID {itemID} and wait time {waitTime} seconds");
+                            break;
+                        case GimmickType.Accessory:
+                            var accessoryValues = text.Split(' ');
+                            if (accessoryValues.Length != 3)
+                            {
+                                player.SendErrorMessage("Invalid number of values for the accessory gimmick, please provide item ID, wait time (in seconds), and slot");
+                                return;
+                            }
+                            if (!int.TryParse(accessoryValues[0], out int accessoryItemID) || !int.TryParse(accessoryValues[1], out int accessoryWaitTime) || !int.TryParse(accessoryValues[2], out int slot))
+                            {
+                                player.SendErrorMessage("Invalid values for the accessory gimmick, please provide valid integers for item ID, wait time (in seconds), and slot");
+                                return;
+                            }
+                            var accessoryGimmick = new GimmickAccessory(accessoryItemID, accessoryWaitTime, slot);
+                            mapToEdit.AdditionalGimmicks.Add(accessoryGimmick);
+                            GameConfig.MapJson.SaveMap(mapToEdit, arenaName);
+                            player.SendSuccessMessage($"Added an accessory gimmick with item ID {accessoryItemID}, wait time {accessoryWaitTime} seconds, and slot {slot}");
+                            break;
+                        case GimmickType.Buff:
+                            var buffValues = text.Split(' ');
+                            if (buffValues.Length != 3)
+                            {
+                                player.SendErrorMessage("Invalid number of values for the buff gimmick, please provide buff ID, buff duration (in seconds), and wait time (in seconds)");
+                                return;
+                            }
+                            if (!int.TryParse(buffValues[0], out int buffID) || !int.TryParse(buffValues[1], out int buffDuration) || !int.TryParse(buffValues[2], out int buffWaitTime))
+                            {
+                                player.SendErrorMessage("Invalid values for the buff gimmick, please provide valid integers for buff ID, buff duration (in seconds), and wait time (in seconds)");
+                                return;
+                            }
+                            var buffGimmick = new GimmickBuff(buffID, buffDuration, buffWaitTime);
+                            mapToEdit.AdditionalGimmicks.Add(buffGimmick);
+                            GameConfig.MapJson.SaveMap(mapToEdit, arenaName);
+                            player.SendSuccessMessage($"Added a buff gimmick with buff ID {buffID}, buff duration {buffDuration} seconds, and wait time {buffWaitTime} seconds");
+                            break;
+                        case GimmickType.Mount:
+                            var mountValues = text.Split(' ');
+                            if (mountValues.Length != 2)
+                            {
+                                player.SendErrorMessage("Invalid number of values for the mount gimmick, please provide item ID and wait time (in seconds)");
+                                return;
+                            }
+                            if (!int.TryParse(mountValues[0], out int mountItemID) || !int.TryParse(mountValues[1], out int mountWaitTime))
+                            {
+                                player.SendErrorMessage("Invalid values for the mount gimmick, please provide valid integers for item ID and wait time (in seconds)");
+                                return;
+                            }
+                            var mountGimmick = new GimmickMount(mountItemID, mountWaitTime);
+                            mapToEdit.AdditionalGimmicks.Add(mountGimmick);
+                            GameConfig.MapJson.SaveMap(mapToEdit, arenaName);
+                            player.SendSuccessMessage($"Added a mount gimmick with item ID {mountItemID} and wait time {mountWaitTime} seconds");
+                            break;
+                        case GimmickType.Mob:
+                            var mobValues = text.Split(' ');
+                            if (mobValues.Length != 5)
+                            {
+                                player.SendErrorMessage("Invalid number of values for the mob gimmick, please provide mob ID, mob amount, mob spawn tile X, mob spawn tile Y, and wait time (in seconds)");
+                                return;
+                            }
+                            if (!int.TryParse(mobValues[0], out int mobID) || !int.TryParse(mobValues[1], out int mobAmount) || !int.TryParse(mobValues[2], out int mobSpawnX) || !int.TryParse(mobValues[3], out int mobSpawnY) || !int.TryParse(mobValues[4], out int mobWaitTime))
+                            {
+                                player.SendErrorMessage("Invalid values for the mob gimmick, please provide valid integers for mob ID, mob amount, mob spawn tile X, mob spawn tile Y, and wait time (in seconds)");
+                                return;
+                            }
+                            var mobGimmick = new GimmickMob(mobID, mobAmount, mobWaitTime, mobSpawnX, mobSpawnY);
+                            mapToEdit.AdditionalGimmicks.Add(mobGimmick);
+                            GameConfig.MapJson.SaveMap(mapToEdit, arenaName);
+                            player.SendSuccessMessage($"Added a mob gimmick with mob ID {mobID}, amount {mobAmount}, spawn point ({mobSpawnX},{mobSpawnY}), and wait time {mobWaitTime} seconds");
+                            break;
+
+                    }
+                    editor.GimmickEditStep = GimmickEditStep.None;
+                    editor.CurrentGimmickType = GimmickType.None;
+                    editor.Mode = EditMode.MapEdit;
+                }
+            }
         }
 
         public void MapEdit(CommandArgs args) //haha mapedit from penguin games
@@ -485,35 +641,57 @@ namespace SpleefResurgence.Game.Editor
 
         private void OnTileEdit(object sender, GetDataHandlers.TileEditEventArgs args)
         {
-            if (!playerEditMode.ContainsKey(args.Player.Index))
+            if (!PlayerEditors.ContainsKey(args.Player.Index))
                 return;
 
-            if (playerEditMode[args.Player.Index] == EditMode.None)
+            if (PlayerEditors[args.Player.Index].Mode == EditMode.None)
                 return;
 
-            if (!playerTileEditCallback.ContainsKey(args.Player.Index))
+            if (PlayerEditors[args.Player.Index].TileEditCallback != null)
                 return;
 
-            playerTileEditCallback[args.Player.Index](args.Player, args.X, args.Y);
+            PlayerEditors[args.Player.Index].TileEditCallback(args.Player, args.X, args.Y);
             args.Handled = true;
             NetMessage.SendTileSquare(args.Player.Index, args.X, args.Y, 1);
         }
 
         private void OnServerChat(ServerChatEventArgs args)
         {
-            if (!playerEditMode.ContainsKey(args.Who))
+            if (!PlayerEditors.ContainsKey(args.Who))
                 return;
 
-            if (playerEditMode[args.Who] == EditMode.None)
+            if (PlayerEditors[args.Who].Mode == EditMode.None)
                 return;
 
-            if (!playerChatCallback.ContainsKey(args.Who))
+            if (PlayerEditors[args.Who].ChatCallback != null)
                 return;
 
             if (args.Text.StartsWith("/"))
                 return;
 
-            playerChatCallback[args.Who](TShock.Players[args.Who], args.Text);
+            if (args.Text == "cancel")
+            {
+                PlayerEditors.Remove(args.Who);
+                TShock.Players[args.Who].SendInfoMessage($"Cancelled editing");
+                DeletePlayerBuff(TShock.Players[args.Who], BuffID.Webbed);
+                args.Handled = true;
+                return;
+            }
+
+            if (args.Text == "undo" &&
+                PlayerEditors[args.Who].Mode == EditMode.MapEditSpawnAdd ||
+                PlayerEditors[args.Who].Mode == EditMode.MapEditSpawnEdit ||
+                PlayerEditors[args.Who].Mode == EditMode.MapEditSpawnMoving)
+            {
+                PlayerEditors[args.Who].Mode = EditMode.MapEdit;
+                PlayerEditors[args.Who].MapSpawnPointID = -1;
+                TShock.Players[args.Who].SendInfoMessage($"Cancelled adding spawn point");
+                DeletePlayerBuff(TShock.Players[args.Who], BuffID.Webbed);
+                args.Handled = true;
+                return;
+            }
+
+            PlayerEditors[args.Who].ChatCallback(TShock.Players[args.Who], args.Text);
             args.Handled = true;
         }
     }
